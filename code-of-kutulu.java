@@ -19,7 +19,6 @@ class Player {
         }
         for (int i = 0; i < height; i++) {
             String line = in.nextLine();
-            System.err.println(line);
             map.add(line);
         }
         int sanityLossLonely = in.nextInt(); // how much sanity you lose every turn when alone, always 3 until wood 1
@@ -99,14 +98,14 @@ enum WandererState {
 
 class Entity {
 
-    int id;
+    private int id;
     EntityType entityType;
     Point position;
-    int param0;
-    int param1;
-    int param2;
+    private int param0;
+    private int param1;
+    private int param2;
 
-    public Entity(int id, String entityType, int x, int y, int param0, int param1, int param2) {
+    Entity(int id, String entityType, int x, int y, int param0, int param1, int param2) {
         this.id = id;
         this.position = new Point(x, y);
         this.param0 = param0;
@@ -157,6 +156,7 @@ class Entity {
 class AStar {
 
     private static final int DISTANCE_TO_NEIGHBOUR = 1;
+    private static final int INFINITY = Integer.MAX_VALUE / 2;
 
     private static final Point[] directions = new Point[]{
             new Point(1, 0),
@@ -169,7 +169,7 @@ class AStar {
         return Math.abs(start.x - end.x) + Math.abs(start.y - end.y);
     }
 
-    private static List<Point> getNeighbours(Point current, List<String> map) {
+    private static List<Point> getNeighbours(Point current, List<String> map, Set<Point> nodes) {
         return Arrays.stream(AStar.directions)
                 .filter((Point direction) -> {
                     int nextX = current.x + direction.x;
@@ -181,11 +181,23 @@ class AStar {
                     }
                     return false;
                 })
-                .map((Point direction) -> new Point(current.x + direction.x, current.y + direction.y))
+                .map((Point direction) -> {
+                    int nextX = current.x + direction.x;
+                    int nextY = current.y + direction.y;
+                    return nodes.stream()
+                            .filter((Point point) -> point.x == nextX && point.y == nextY)
+                            .findFirst()
+                            .orElse(new Point(nextX, nextY));
+                })
                 .collect(Collectors.toList());
     }
 
-    public static List<Point> getPath(Entity startEntity, Entity endEntity, List<String> map) {
+    static List<Point> getPath(Entity startEntity, Entity endEntity, List<String> map) {
+
+        Set<Point> nodes = new HashSet<Point>() {{
+            add(startEntity.position);
+            add(endEntity.position);
+        }};
 
         List<Point> closedSet = new ArrayList<Point>();
 
@@ -214,7 +226,9 @@ class AStar {
             openSet.remove(current);
             closedSet.add(current);
 
-            for (Point neighbour : AStar.getNeighbours(current, map)) {
+            for (Point neighbour : AStar.getNeighbours(current, map, nodes)) {
+
+                nodes.add(neighbour);
 
                 if (closedSet.contains(neighbour)) {
                     continue;
@@ -224,18 +238,17 @@ class AStar {
                     openSet.add(neighbour);
                 }
 
-                Integer currentGScore = gScore.get(current);
-                Integer tentativeGScore = currentGScore == null ?
-                        Integer.MAX_VALUE : currentGScore + DISTANCE_TO_NEIGHBOUR;
+                Integer gScoreCurrent = gScore.get(current) != null ? gScore.get(current) : INFINITY;
+                int tentativeGScore = gScoreCurrent + DISTANCE_TO_NEIGHBOUR;
 
-                Integer neighbourGScore = gScore.get(neighbour) != null ? gScore.get(neighbour) : Integer.MAX_VALUE;
-                if (tentativeGScore >= neighbourGScore) {
+                Integer gScoreNeighbour = gScore.get(neighbour) != null ? gScore.get(neighbour) : INFINITY;
+                if (tentativeGScore > gScoreNeighbour) {
                     continue;
                 }
 
                 cameFrom.put(neighbour, current);
                 gScore.put(neighbour, tentativeGScore);
-                fScore.put(neighbour, neighbourGScore + heuristicCostEstimate(neighbour, endEntity.position));
+                fScore.put(neighbour, gScoreNeighbour + heuristicCostEstimate(neighbour, endEntity.position));
 
             }
 
