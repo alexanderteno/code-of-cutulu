@@ -1,6 +1,7 @@
 import java.util.*;
 import java.io.*;
 import java.math.*;
+import java.util.stream.Collectors;
 
 /**
  * Survive the wrath of Kutulu
@@ -12,11 +13,14 @@ class Player {
         Scanner in = new Scanner(System.in);
         int width = in.nextInt();
         int height = in.nextInt();
+        List<String> map = new ArrayList<String>();
         if (in.hasNextLine()) {
             in.nextLine();
         }
         for (int i = 0; i < height; i++) {
             String line = in.nextLine();
+            System.err.println(line);
+            map.add(line);
         }
         int sanityLossLonely = in.nextInt(); // how much sanity you lose every turn when alone, always 3 until wood 1
         int sanityLossGroup = in.nextInt(); // how much sanity you lose every turn when near another player, always 1 until wood 1
@@ -43,15 +47,28 @@ class Player {
             // Write an action using System.out.println()
             // To debug: System.err.println("Debug messages...");
 
-            System.out.println("WAIT"); // MOVE <x> <y> | WAIT
+            Entity myExplorer = entities.stream().findFirst().get();
+
+            Entity firstEnemy = entities.stream()
+                    .filter((Entity entity) -> entity.entityType == EntityType.WANDERER)
+                    .findFirst()
+                    .orElse(null);
+
+            if (firstEnemy != null) {
+                List<Point> pathToFirstEnemy = AStar.getPath(myExplorer, firstEnemy, map);
+
+                if (pathToFirstEnemy != null) {
+                    for (Point point : pathToFirstEnemy) {
+                        System.err.println(point);
+                    }
+                }
+            }
+
+            System.out.println("MOVE 2 2"); // MOVE <x> <y> | WAIT
 
             prevEntities = entities;
         }
     }
-}
-
-class Path {
-
 }
 
 class Point {
@@ -62,6 +79,10 @@ class Point {
     public Point(int x, int y) {
         this.x = x;
         this.y = y;
+    }
+
+    public String toString() {
+        return "Point: (" + this.x + ", " + this.y + ")";
     }
 
 }
@@ -129,6 +150,111 @@ class Entity {
 
     public int target() {
         return this.param2;
+    }
+
+}
+
+class AStar {
+
+    private static final int DISTANCE_TO_NEIGHBOUR = 1;
+
+    private static final Point[] directions = new Point[]{
+            new Point(1, 0),
+            new Point(0, -1),
+            new Point(-1, 0),
+            new Point(0, 1)
+    };
+
+    private static Integer heuristicCostEstimate(Point start, Point end) {
+        return Math.abs(start.x - end.x) + Math.abs(start.y - end.y);
+    }
+
+    private static List<Point> getNeighbours(Point current, List<String> map) {
+        return Arrays.stream(AStar.directions)
+                .filter((Point direction) -> {
+                    int nextX = current.x + direction.x;
+                    boolean withinWidth = 0 <= nextX && nextX < map.get(0).length();
+                    int nextY = current.y + direction.y;
+                    boolean withinHeight = 0 <= nextY && nextY < map.size();
+                    if (withinWidth && withinHeight) {
+                        return map.get(nextY).charAt(nextX) != '#';
+                    }
+                    return false;
+                })
+                .map((Point direction) -> new Point(current.x + direction.x, current.y + direction.y))
+                .collect(Collectors.toList());
+    }
+
+    public static List<Point> getPath(Entity startEntity, Entity endEntity, List<String> map) {
+
+        List<Point> closedSet = new ArrayList<Point>();
+
+        List<Point> openSet = new ArrayList<Point>() {{
+            add(startEntity.position);
+        }};
+
+        Map<Point, Point> cameFrom = new HashMap<Point, Point>();
+
+        Map<Point, Integer> gScore = new HashMap<Point, Integer>();
+
+        gScore.put(startEntity.position, 0);
+
+        Map<Point, Integer> fScore = new HashMap<Point, Integer>();
+
+        fScore.put(startEntity.position, AStar.heuristicCostEstimate(startEntity.position, endEntity.position));
+
+        while (!openSet.isEmpty()) {
+
+            Point current = openSet.stream().min(Comparator.comparingInt(fScore::get)).get();
+
+            if (current.equals(endEntity.position)) {
+                return reconstructPath(cameFrom, current);
+            }
+
+            openSet.remove(current);
+            closedSet.add(current);
+
+            for (Point neighbour : AStar.getNeighbours(current, map)) {
+
+                if (closedSet.contains(neighbour)) {
+                    continue;
+                }
+
+                if (!openSet.contains(neighbour)) {
+                    openSet.add(neighbour);
+                }
+
+                Integer currentGScore = gScore.get(current);
+                Integer tentativeGScore = currentGScore == null ?
+                        Integer.MAX_VALUE : currentGScore + DISTANCE_TO_NEIGHBOUR;
+
+                Integer neighbourGScore = gScore.get(neighbour) != null ? gScore.get(neighbour) : Integer.MAX_VALUE;
+                if (tentativeGScore >= neighbourGScore) {
+                    continue;
+                }
+
+                cameFrom.put(neighbour, current);
+                gScore.put(neighbour, tentativeGScore);
+                fScore.put(neighbour, neighbourGScore + heuristicCostEstimate(neighbour, endEntity.position));
+
+            }
+
+        }
+
+        return null;
+
+    }
+
+    private static List<Point> reconstructPath(Map<Point, Point> cameFrom, Point finalPoint) {
+        Point current = finalPoint;
+        List<Point> totalPath = new ArrayList<Point>() {{
+            add(finalPoint);
+        }};
+        while (cameFrom.containsKey(current)) {
+            current = cameFrom.get(current);
+            totalPath.add(current);
+        }
+        return totalPath;
     }
 
 }
